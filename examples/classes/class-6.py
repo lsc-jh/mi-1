@@ -53,30 +53,6 @@ def is_even(number: int) -> bool:
     return number % 2 == 0
 
 
-def calculator(a: float, b: float, operator: str) -> float | None:
-    """
-    Performs a calculation based on the given operator.
-    
-    Args:
-        a (float): The first number.
-        b (float): The second number.
-        operator (str): The operator (+, -, *, /).
-    
-    Returns:
-        float: The result of the calculation.
-    """
-    if operator == "+":
-        return a + b
-    elif operator == "-":
-        return a - b
-    elif operator == "*":
-        return a * b
-    elif operator == "/":
-        return a / b
-    else:
-        return None
-
-
 def factorial(n: int) -> int:
     """
     Calculates the factorial of a number using recursion.
@@ -146,12 +122,7 @@ if __name__ == "__main__":
     
     print(is_even(4))
     print(is_even(7))
-    
-    print(calculator(10, 5, "+"))
-    print(calculator(10, 5, "-"))
-    print(calculator(10, 5, "*"))
-    print(calculator(10, 5, "/"))
-    
+
     print(factorial(5))
     
     print(count_vowels("Hello World"))
