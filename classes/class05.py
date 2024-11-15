@@ -25,6 +25,12 @@ def calculate(a: int, b: int):
 def calculate_with_path(a: int, b: int, operator: Literal["+", "-", "*", "/"] = "+"):
     """ABC"""
 
+    print(f"Operator: {operator}")
+    print(f"a: {a}")
+    print(f"b: {b}")
+
+    result = None
+
     match operator:
         case "+":
             result = a + b
@@ -70,7 +76,7 @@ def calculate_post(req: Request):
         "a": a,
         "b": b,
         "operator": operator,
-        "result": result if result != None else "Some of the inputs were incorrect!"
+        "result": result if result is not None else "Some of the inputs were incorrect!"
     }
 
 
