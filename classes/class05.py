@@ -3,12 +3,6 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from chatbot import Chat, register_call
-import wikipedia
-
-from transformers import file_utils
-print(file_utils.default_cache_path)
-
-exit()
 
 # Just example :-)
 tags_metadata = [
