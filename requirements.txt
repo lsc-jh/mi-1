@@ -2,3 +2,4 @@ fastapi
 uvicorn
 chatbotAI
 wikipedia
+jsonservice
