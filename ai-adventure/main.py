@@ -9,37 +9,69 @@ from jsonservice import JsonService
 import requests
 import json
 
+SERVER_URL = "http://localhost:8000"
+AI_URL = "https://lsc-ai.kou-gen.net/api/generate"
+PROMPT_URL = "https://lsc-ai.kou-gen.net/prompt/mi-1/v1/generate"
 
-def get_prompt(scene: str, choices: list[str], context: str = "", choice: str = None) -> str:
-    base = f"""
-    You are building an adventure game. The player is currently at: {scene}.
-"""
-    if context:
-        base += f"""
-        Context for the scene: {context}
-"""
-    base += f"""
-    Provide the next scene's description and two choices and a name for the scene in JSON format!
-
-    Then name of the scene should follow the python variable naming convention (snake_case).
-"""
-    if choices:
-        base += f"""
-    The player can choose between: {choices[0]} and {choices[1]}.
-"""
-    if choice:
-        base += f"""
-        The player chose: {choice}.
-    """
-    return base
+service = JsonService('users.json')
 
 class User:
-    def __init__(self, username: str, current_scene: str = "start"):
+    def __init__(self, username: str, json_data=None):
         self.username = username
-        self.current_scene = current_scene
-        self.scene = {}
 
-    # TODO: Functions
+        if json_data:
+            self.current_scene = json_data["current_scene"]
+            self.scene = json.loads(json_data["scene"])
+        else:
+            self.current_scene = "start"
+            self.scene = {}
+
+    def generate_next_scene(self, choice=None, model="llama3"):
+        choices = list(self.scene.get("choices", {}).values())
+
+        body = {
+            "scene": self.current_scene,
+            "choices": choices,
+            "context": self.scene.get("description", ""),
+            "choice": choice
+        }
+
+        prompt_res = requests.post(PROMPT_URL, json=body)
+
+        if prompt_res.status_code == 200:
+            raw_json = prompt_res.json()
+            prompt = raw_json.get("prompt")
+        else:
+            print("Error:", prompt_res.text)
+            return None
+
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+        }
+
+        response = requests.post(AI_URL, json=payload)
+
+        try:
+            if response.status_code == 200:
+                self.scene = json.loads(response.json().get("response"))
+                self.current_scene = self.scene["name"]
+
+                service.write(f"users.{self.username}", self.serialize())
+            else:
+                print("Error:", response.text)
+                return None
+        except:
+            print("Error:", response.text)
+            return None
+
+
+    def serialize(self):
+        return {
+            "current_scene": self.current_scene,
+            "scene": json.dumps(self.scene),
+        }
 
 
 def open_browser(*args) -> None:
@@ -47,9 +79,6 @@ def open_browser(*args) -> None:
     if os.path.exists("game.html"):
         webbrowser.open_new("game.html")
 
-
-SERVER_URL = "http://localhost:8000"
-AI_URL = "https://lsc-ai.kou-gen.net/api/generate"
 
 app = FastAPI()
 
@@ -62,14 +91,27 @@ app.add_middleware(
 )
 
 
-service = JsonService('users.json', default_data={"users": []})
-users = service.read("users") or []
-
 @app.get("/", tags=["Adventure"])
 def home():
     return {
         "message": "Hello Adventurer!",
     }
+
+
+@app.get("/start")
+def start_game(username: str):
+    user = service.read(f"users.{username}")
+
+    if not user:
+        user = User(username)
+        service.write(f"users.{username}", user.serialize())
+        user.generate_next_scene()
+    else:
+        user = User(username, user)
+
+    return user.scene
+
+
 
 if __name__ == "__main__":
     _thread.start_new_thread(open_browser, ())
