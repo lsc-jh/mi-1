@@ -14,7 +14,65 @@ SERVER_URL = "http://localhost:8000"
 AI_URL = "https://lsc-ai.kou-gen.net/api/generate"
 PROMPT_URL = "https://lsc-ai.kou-gen.net/prompt/mi-1/v1/generate"
 
-service = JsonService('users.json')
+service = JsonService('data.json')
+
+
+def _insert_scene(_scenes: dict, scene_name, scene_data) -> dict:
+    if scene_name in _scenes:
+        return _scenes
+
+    if _scenes == {}:
+        _scenes[scene_name] = scene_data
+        return _scenes
+
+    for name, scene in _scenes.items():
+        if "scenes" in scene:
+            if scene_name in scene["choices"]:
+                scene["scenes"][scene_name] = scene_data
+                return _scenes
+            else:
+                _insert_scene(scene["scenes"], scene_name, scene_data)
+                return _scenes
+        else:
+            if scene_name in scene["choices"]:
+                scene["scenes"] = {scene_name: scene_data}
+                return _scenes
+
+
+def _find_scene(_scenes, scene_name):
+    if scene_name in _scenes:
+        return _scenes[scene_name]
+
+    for name, scene in _scenes.items():
+        if "scenes" in scene:
+            result = _find_scene(scene["scenes"], scene_name)
+            if result:
+                return result
+    return None
+
+
+class Scenes:
+    def __init__(self):
+        scenes_data = service.read("scenes")
+        if scenes_data:
+            self.scenes = scenes_data
+        else:
+            self.scenes = {}
+
+    def insert_scene(self, name, data):
+        _scenes = _insert_scene(self.scenes, name, data)
+        if not _scenes:
+            print("Something went wrong!")
+            return
+        self.scenes = _scenes
+        service.write("scenes", self.scenes)
+
+    def find_scene(self, name):
+        return _find_scene(self.scenes, name)
+
+
+scenes = Scenes()
+
 
 class User:
     def __init__(self, username: str, json_data=None):
@@ -31,11 +89,20 @@ class User:
             self.max_scenes = 10
             self.scene = {}
 
-    def generate_next_scene(self, choice=None, model="llama3"):
+    def generate_next_scene(self, scene_name=None, choice=None):
         if self.scene_count >= self.max_scenes:
             return
 
         self.scene_count += 1
+
+        if scene_name:
+            self.current_scene = scene_name
+            self.scene = scenes.find_scene(scene_name)
+            if self.scene:
+                service.write(f"users.{self.username}", self.serialize())
+                return
+            else:
+                self.scene = {}
 
         choices = list(self.scene.get("choices", {}).values())
 
@@ -58,7 +125,7 @@ class User:
             return None
 
         payload = {
-            "model": model,
+            "model": "llama3",
             "prompt": prompt,
             "stream": False,
         }
@@ -70,6 +137,7 @@ class User:
                 self.scene = json.loads(response.json().get("response"))
                 self.current_scene = self.scene["name"]
 
+                scenes.insert_scene(self.current_scene, self.scene)
                 service.write(f"users.{self.username}", self.serialize())
             else:
                 print("Error:", response.text)
@@ -77,7 +145,6 @@ class User:
         except:
             print("Error:", response.text)
             return None
-
 
     def serialize(self):
         return {
@@ -111,24 +178,32 @@ def home():
         "message": "Hello Adventurer!",
     }
 
+@app.get("/scenes", tags=["Adventure"])
+def list_scenes():
+    scene_names = [scene["name"] for scene in scenes.scenes.values()]
+    return {
+        "scenes": scene_names,
+    }
 
-@app.get("/start")
-def start_game(username: str, max_scenes: int = 10, language: str = "en"):
+@app.get("/start", tags=["Adventure"])
+def start_game(username: str, max_scenes: int = 10, language: str = "en", start_scene: str = "start"):
     user = service.read(f"users.{username}")
 
     if not user:
         user = User(username)
-        user.max_scenes = max_scenes # Uj sor
+        user.max_scenes = max_scenes  # Uj sor
         service.write(f"users.{username}", user.serialize())
-        user.generate_next_scene()
+        user.generate_next_scene(scene_name=start_scene)
     else:
         user = User(username, user)
 
     return user.serialize()
 
+
 class GameChoice(BaseModel):
     username: str
     choice: str
+
 
 @app.post("/continue")
 def continue_game(game_choice: GameChoice):
@@ -159,7 +234,6 @@ def continue_game(game_choice: GameChoice):
     return user.serialize()
 
 
-
 if __name__ == "__main__":
-    #_thread.start_new_thread(open_browser, ())
+    # _thread.start_new_thread(open_browser, ())
     uvicorn.run("main:app", reload=True)
